@@ -35,8 +35,9 @@ export const logger = winston.createLogger({
     format: logFormat,
     defaultMeta: { service: 'grep-app-server' },
     transports: [
-        // Console transport for development
+        // Console transport - writes to stderr to avoid corrupting stdio MCP protocol on stdout
         new winston.transports.Console({
+            stderrLevels: ['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly'],
             format: winston.format.combine(
                 winston.format.colorize(),
                 winston.format.printf((info: TransformableInfo) => {
