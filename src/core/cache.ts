@@ -24,7 +24,8 @@ export interface CacheKey {
  * Generate a cache key from a key object
  */
 export function generateCacheKey(keyObj: CacheKey): string {
-    const key = JSON.stringify({ query: keyObj.query });
+    // Include all key properties (query, page, filters) to avoid cache collisions
+    const key = JSON.stringify(keyObj);
     return crypto.createHash('md5').update(key).digest('hex');
 }
 

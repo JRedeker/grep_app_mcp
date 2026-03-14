@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { GitHubFileRequestSchema, fetchGitHubFiles } from '../core/github-utils.js';
+import { GitHubFileRequestSchema, fetchGitHubFilesWithOptions } from '../core/github-utils.js';
 import type { ToolContext } from '../core/types.js';
+import { RateLimitError } from '../core/retry.js';
 
 // Schema for batch file request
 const BatchFileRequestSchema = z.object({
@@ -22,9 +23,19 @@ export const githubBatchFilesTool = {
   execute: async (args: BatchFileRequest, context: ToolContext) => {
     const params = BatchFileRequestSchema.parse(args);
     try {
-      const results = await fetchGitHubFiles(params.files);
+      const results = await fetchGitHubFilesWithOptions(params.files, undefined, {
+        throwOnRateLimit: true,
+      });
       return JSON.stringify(results, null, 2);
     } catch (error) {
+      if (error instanceof RateLimitError) {
+        const waitMsg = error.retryAfterSeconds
+          ? `Try again in ${error.retryAfterSeconds} seconds.`
+          : 'Try again later.';
+        return JSON.stringify({
+          error: `GitHub API rate limit reached after ${error.attempts} attempts. ${waitMsg}`
+        }, null, 2);
+      }
       return JSON.stringify({
         error: error instanceof Error ? error.message : 'Unknown error occurred'
       }, null, 2);

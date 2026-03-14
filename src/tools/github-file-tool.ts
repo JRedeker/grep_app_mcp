@@ -1,7 +1,6 @@
-import { Octokit } from '@octokit/rest';
 import { z } from 'zod';
-
-const octokit = new Octokit();
+import { octokit } from '../core/octokit.js';
+import { withRetry, RateLimitError } from '../core/retry.js';
 
 // Schema for file request
 const FileRequestSchema = z.object({
@@ -33,12 +32,15 @@ export const githubFileTool = {
   execute: async (args: any, { log, reportProgress }: any) => {
     const params = FileRequestSchema.parse(args);
     try {
-      const response = await octokit.rest.repos.getContent({
-        owner: params.owner,
-        repo: params.repo,
-        path: params.path,
-        ref: params.ref
-      });
+      const response = await withRetry(
+        () => octokit.rest.repos.getContent({
+          owner: params.owner,
+          repo: params.repo,
+          path: params.path,
+          ref: params.ref
+        }),
+        { retryOn403: true }
+      );
 
       if (Array.isArray(response.data)) {
         throw new Error('Path points to a directory, not a file');
@@ -56,6 +58,14 @@ export const githubFileTool = {
         sha: response.data.sha
       }, null, 2);
     } catch (error) {
+      if (error instanceof RateLimitError) {
+        const waitMsg = error.retryAfterSeconds
+          ? `Try again in ${error.retryAfterSeconds} seconds.`
+          : 'Try again later.';
+        return JSON.stringify({
+          error: `GitHub API rate limit reached after ${error.attempts} attempts. ${waitMsg}`
+        }, null, 2);
+      }
       return JSON.stringify({
         error: error instanceof Error ? error.message : 'Unknown error occurred'
       }, null, 2);

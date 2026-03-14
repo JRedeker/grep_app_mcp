@@ -3,6 +3,7 @@ import { UserError } from 'fastmcp';
 import { logger, SearchParams } from '../core/index.js';
 import { searchTool as grepAppSearchTool } from '../core/grep-app-client.js';
 import { formatResultsAsText, formatResultsAsNumberedList } from '../utils/formatters.js';
+import { RateLimitError } from '../core/retry.js';
 
 /**
  * Schema for the searchCode tool parameters
@@ -69,6 +70,13 @@ export const searchCodeTool = {
                 return formatResultsAsText(result.hits.hits);
             }
         } catch (error: any) {
+            if (error instanceof RateLimitError) {
+                const waitMsg = error.retryAfterSeconds
+                    ? `Try again in ${error.retryAfterSeconds} seconds.`
+                    : 'Try again later.';
+                logger.warn("grep.app rate limit hit", { attempts: error.attempts, retryAfterSeconds: error.retryAfterSeconds });
+                throw new UserError(`grep.app rate limit reached after ${error.attempts} attempts. ${waitMsg}`);
+            }
             logger.error("Search execution failed", { error: error.message, stack: error.stack });
             log.error(`An error occurred during search: ${error.message}`);
             throw new UserError(`Search failed. Reason: ${error.message}`);

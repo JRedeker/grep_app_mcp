@@ -1,8 +1,9 @@
 import { BatchRetrievalParams, BatchRetrievalResult, ToolContext } from './types.js';
 import { logger } from './logger.js';
-import { fetchGitHubFiles, GitHubFileRequest } from './github-utils.js';
+import { fetchGitHubFilesWithOptions, GitHubFileRequest } from './github-utils.js';
 import { findCacheFiles, getCachedData } from './cache.js';
 import { IHits } from './hits.js';
+import { RateLimitError } from './retry.js';
 
 /**
  * Flattens the nested hits structure into a numbered list of files.
@@ -160,7 +161,9 @@ export async function batchRetrieveFiles(
 
         // Fetch files from GitHub
         log.info(`Fetching ${fileRequests.length} files from GitHub for page ${page}...`);
-        const githubResults = await fetchGitHubFiles(fileRequests);
+        const githubResults = await fetchGitHubFilesWithOptions(fileRequests, undefined, {
+            throwOnRateLimit: true,
+        });
 
         // Map GitHub results back to our format
         const files = pageHits.map(hit => {
@@ -197,6 +200,17 @@ export async function batchRetrieveFiles(
             totalResults,
         };
     } catch (err) {
+        if (err instanceof RateLimitError) {
+            const waitMsg = err.retryAfterSeconds
+                ? `Try again in ${err.retryAfterSeconds} seconds.`
+                : 'Try again later.';
+            context.log.error(`GitHub API rate limit reached after ${err.attempts} attempts. ${waitMsg}`);
+            return {
+                success: false,
+                files: [],
+                error: `GitHub API rate limit reached after ${err.attempts} attempts. ${waitMsg}`
+            };
+        }
         context.log.error('Batch retrieval failed with an unexpected error.', { error: err });
         return {
             success: false,
