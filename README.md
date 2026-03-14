@@ -8,9 +8,11 @@ A Model Context Protocol (MCP) server that provides powerful code search capabil
 - **📁 File Retrieval**: Fetch specific files or batches of files from GitHub
 - **🎯 Flexible Filtering**: Filter by language, repository, file path, and more  
 - **📊 Multiple Output Formats**: JSON, numbered lists, or formatted text
-- **⚡ Batch Operations**: Retrieve multiple files efficiently in parallel
+- **⚡ Batch Operations**: Retrieve multiple files efficiently with concurrency control
 - **🔄 Result Caching**: Cache search results for quick file retrieval
 - **📝 Comprehensive Logging**: Built-in logging with daily rotation
+- **🛡️ Rate Limit Resilience**: Automatic retry with exponential backoff, Retry-After header support, and concurrency limiting
+- **🔑 GitHub Token Support**: Authenticated GitHub API access (60 → 5,000 req/hr)
 
 ## 🛠️ Installation & Setup
 
@@ -24,7 +26,7 @@ A Model Context Protocol (MCP) server that provides powerful code search capabil
 
 1. **Clone or download this repository**
    ```bash
-   git clone https://github.com/ai-tools-all/grep_app_mcp.git
+   git clone https://github.com/JRedeker/grep_app_mcp.git
    cd grep_app_mcp
    ```
 
@@ -200,6 +202,62 @@ Retrieve files from previously cached search results.
 }
 ```
 
+## 🛡️ Rate Limit Resilience
+
+The server includes built-in protection against API rate limits on both the grep.app and GitHub APIs.
+
+### Automatic Retry with Backoff
+
+All API calls are wrapped with retry logic that:
+- **Retries on HTTP 429** (Too Many Requests) and **5xx** (Server errors)
+- **Retries on HTTP 403** for GitHub secondary rate limits
+- **Retries on network errors** (ECONNRESET, timeouts)
+- Uses **exponential backoff with jitter** to avoid thundering herd
+- Respects **Retry-After** headers (both seconds and HTTP date formats)
+- Respects GitHub **x-ratelimit-reset** headers
+- Configurable: max 3 retries, 1s base delay, 30s max delay
+
+### GitHub Authentication
+
+Set `GITHUB_TOKEN` to increase the GitHub API rate limit from 60 to 5,000 requests/hour:
+
+```bash
+export GITHUB_TOKEN=ghp_your_token_here
+```
+
+Or in your MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "grep_app": {
+      "command": "node",
+      "args": ["/path/to/grep_app_mcp/dist/server-stdio.js"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_your_token_here"
+      }
+    }
+  }
+}
+```
+
+Without a token, the server falls back to unauthenticated mode (60 req/hr) and logs a warning.
+
+### Concurrency Control
+
+GitHub batch file fetches are limited to **5 concurrent requests** by default, preventing burst overload that triggers rate limits.
+
+### Search Pagination Throttling
+
+Sequential grep.app page fetches include a **300ms delay** between requests to avoid triggering rate limits during multi-page searches.
+
+### Actionable Error Messages
+
+When rate limits are exhausted after all retries, error messages include:
+- Which API was rate-limited (grep.app or GitHub)
+- How many retry attempts were made
+- Suggested wait time before retrying
+
 ## 🎯 Common Workflows
 
 ### 1. Code Discovery
@@ -236,6 +294,7 @@ github_batch_files([
 
 ### Available Scripts
 - `npm run build` - Build TypeScript to JavaScript
+- `npm test` - Run test suite (vitest)
 - `npm run start` - Start production HTTP server
 - `npm run start-stdio` - Start production STDIO server  
 - `npm run dev` - Start development HTTP server with hot reload
@@ -245,10 +304,33 @@ github_batch_files([
 ### Project Structure
 ```
 src/
-├── core/           # Core utilities (logger, types)
-├── tools/          # MCP tool implementations
-├── server.ts       # HTTP server entry point
-└── server-stdio.ts # STDIO server entry point
+├── __tests__/          # Test suite (vitest)
+│   ├── smoke.test.ts           # Runner smoke test
+│   ├── retry.test.ts           # Retry utility tests (13 tests)
+│   ├── octokit.test.ts         # Shared Octokit tests
+│   ├── concurrency.test.ts     # pLimit concurrency tests
+│   └── error-surface.test.ts   # Rate limit error surfacing tests
+├── core/               # Core utilities and infrastructure
+│   ├── index.ts                # Barrel exports
+│   ├── retry.ts                # withRetry, RateLimitError, exponential backoff
+│   ├── octokit.ts              # Shared auth-aware Octokit instance
+│   ├── concurrency.ts          # pLimit concurrency limiter
+│   ├── cache.ts                # Result caching with page-aware keys
+│   ├── grep-app-client.ts      # grep.app API client with retry + throttling
+│   ├── github-utils.ts         # GitHub file fetching with retry + concurrency
+│   ├── batch-retrieval.ts      # Batch file retrieval from cached results
+│   ├── hits.ts                 # Search result data structures
+│   ├── logger.ts               # Winston logger with daily rotation
+│   └── types.ts                # Shared TypeScript types and schemas
+├── tools/              # MCP tool implementations
+│   ├── index.ts                # Tool registration
+│   ├── search-code.ts          # searchCode tool
+│   ├── github-file-tool.ts     # github_file tool
+│   ├── github-batch-files-tool.ts  # github_batch_files tool
+│   └── batch-retrieval.ts      # batch_retrieve_files tool
+├── utils/              # Formatting utilities
+├── server.ts           # HTTP server entry point
+└── server-stdio.ts     # STDIO server entry point
 ```
 
 ## 📝 Logging
