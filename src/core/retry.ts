@@ -23,7 +23,7 @@ export interface RetryOptions {
   maxRetries?: number;
   /** Base delay in milliseconds for exponential backoff. Default: 1000 */
   baseDelay?: number;
-  /** Maximum delay cap in milliseconds. Default: 30000 */
+  /** Maximum delay cap in milliseconds. Default: 5000 */
   maxDelay?: number;
   /** Whether to retry on HTTP 403 (GitHub secondary rate limit). Default: false */
   retryOn403?: boolean;
@@ -148,7 +148,7 @@ export async function withRetry<T>(
   const {
     maxRetries = 3,
     baseDelay = 1000,
-    maxDelay = 30000,
+    maxDelay = 5000,
     retryOn403 = false,
   } = options;
 

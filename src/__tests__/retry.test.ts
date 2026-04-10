@@ -198,6 +198,30 @@ describe('withRetry', () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
+  it('defaults maxDelay to 5000ms', async () => {
+    const { logger } = await import('../core/logger.js');
+    vi.useFakeTimers();
+
+    const error429 = Object.assign(new Error('Too Many Requests'), {
+      response: { status: 429, headers: { 'retry-after': '10' } },
+    });
+    const fn = vi.fn()
+      .mockRejectedValueOnce(error429)
+      .mockResolvedValue('ok');
+
+    const promise = withRetry(fn, { baseDelay: 1 }); // no maxDelay — uses default
+    await vi.runAllTimersAsync();
+    await promise;
+
+    vi.useRealTimers();
+
+    // retry-after: 10s (10000ms) should be capped at default maxDelay of 5000ms
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Retry attempt'),
+      expect.objectContaining({ delayMs: 5000 }),
+    );
+  });
+
   it('uses configurable maxRetries', async () => {
     const error429 = Object.assign(new Error('Too Many Requests'), {
       response: { status: 429, headers: {} },

@@ -5,6 +5,10 @@ import { logger } from './logger.js';
 import { generateCacheKey, getCachedData, cacheData } from './cache.js';
 import { withRetry } from './retry.js';
 
+/** Timeout for grep.app HTTP requests in milliseconds. Override via GREP_APP_TIMEOUT_MS env var. */
+const _rawGrepTimeout = Number(process.env.GREP_APP_TIMEOUT_MS);
+const GREP_APP_TIMEOUT_MS = (Number.isFinite(_rawGrepTimeout) && _rawGrepTimeout > 0) ? _rawGrepTimeout : 10_000;
+
 /** Delay between sequential page fetches to avoid burst rate limiting (ms). */
 const INTER_PAGE_DELAY_MS = 300;
 
@@ -31,6 +35,7 @@ async function fetchGrepApp(page: number, args: SearchParams): Promise<{ nextPag
     // Fetch from API with retry on 429/5xx
     const response = await withRetry(
         () => axios.get<GrepAppResponse>('https://grep.app/api/search', {
+            timeout: GREP_APP_TIMEOUT_MS,
             params: {
                 q: args.query,
                 page: page.toString(),
@@ -42,7 +47,7 @@ async function fetchGrepApp(page: number, args: SearchParams): Promise<{ nextPag
                 lang: args.langFilter || ''
             }
         }),
-        { maxRetries: 3, baseDelay: 1000, maxDelay: 30000 }
+        { maxRetries: 3, baseDelay: 1000, maxDelay: 5000 }
     );
 
     const hits = createHits();

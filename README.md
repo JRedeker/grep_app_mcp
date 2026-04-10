@@ -12,6 +12,7 @@ A Model Context Protocol (MCP) server that provides powerful code search capabil
 - **🔄 Result Caching**: Cache search results for quick file retrieval
 - **📝 Comprehensive Logging**: Built-in logging with daily rotation
 - **🛡️ Rate Limit Resilience**: Automatic retry with exponential backoff, Retry-After header support, and concurrency limiting
+- **⏱️ Request Timeouts**: 10s default timeout on all HTTP requests (grep.app and GitHub), configurable via environment variables
 - **🔑 GitHub Token Support**: Authenticated GitHub API access (60 → 5,000 req/hr)
 
 ## 🛠️ Installation & Setup
@@ -215,7 +216,25 @@ All API calls are wrapped with retry logic that:
 - Uses **exponential backoff with jitter** to avoid thundering herd
 - Respects **Retry-After** headers (both seconds and HTTP date formats)
 - Respects GitHub **x-ratelimit-reset** headers
-- Configurable: max 3 retries, 1s base delay, 30s max delay
+- Configurable: max 3 retries, 1s base delay, 5s max delay
+
+### Request Timeouts
+
+All outbound HTTP requests include a **10-second timeout** by default to prevent indefinite hangs:
+
+| Request Type | Env Variable | Default |
+|---|---|---|
+| grep.app search | `GREP_APP_TIMEOUT_MS` | `10000` (10s) |
+| GitHub API (Octokit) | `GITHUB_API_TIMEOUT_MS` | `10000` (10s) |
+
+Override in your environment or MCP configuration:
+
+```bash
+export GREP_APP_TIMEOUT_MS=15000      # 15s for grep.app
+export GITHUB_API_TIMEOUT_MS=20000    # 20s for GitHub API
+```
+
+Values must be positive integers; invalid values fall back to the 10s default.
 
 ### GitHub Authentication
 
@@ -306,8 +325,9 @@ github_batch_files([
 src/
 ├── __tests__/          # Test suite (vitest)
 │   ├── smoke.test.ts           # Runner smoke test
-│   ├── retry.test.ts           # Retry utility tests (13 tests)
-│   ├── octokit.test.ts         # Shared Octokit tests
+│   ├── retry.test.ts           # Retry utility tests (16 tests)
+│   ├── octokit.test.ts         # Shared Octokit tests (6 tests)
+│   ├── grep-app-client.test.ts # grep.app client timeout tests
 │   ├── concurrency.test.ts     # pLimit concurrency tests
 │   └── error-surface.test.ts   # Rate limit error surfacing tests
 ├── core/               # Core utilities and infrastructure

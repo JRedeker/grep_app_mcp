@@ -42,4 +42,41 @@ describe('shared octokit instance', () => {
     const instance = createOctokit();
     expect(instance).toBeDefined();
   });
+
+  it('passes request timeout to Octokit constructor (authenticated)', async () => {
+    process.env.GITHUB_TOKEN = 'test-token-timeout';
+    const MockOctokit = vi.fn();
+    vi.doMock('@octokit/rest', () => ({ Octokit: MockOctokit }));
+    vi.doMock('../core/logger.js', () => ({
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    }));
+
+    const { createOctokit } = await import('../core/octokit.js');
+    createOctokit();
+
+    expect(MockOctokit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        auth: 'test-token-timeout',
+        request: expect.objectContaining({ timeout: 10000 }),
+      }),
+    );
+  });
+
+  it('passes request timeout to Octokit constructor (unauthenticated)', async () => {
+    delete process.env.GITHUB_TOKEN;
+    const MockOctokit = vi.fn();
+    vi.doMock('@octokit/rest', () => ({ Octokit: MockOctokit }));
+    vi.doMock('../core/logger.js', () => ({
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    }));
+
+    const { createOctokit } = await import('../core/octokit.js');
+    createOctokit();
+
+    expect(MockOctokit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({ timeout: 10000 }),
+      }),
+    );
+  });
 });
