@@ -6,3 +6,4 @@ dist_old
 cache
 .aider*
 dist-binary
+project.json
